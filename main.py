@@ -4,282 +4,260 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import Forbidden
 
-TOKEN = os.getenv("BOT_TOKEN")  # 🔐 SAFE
+TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = 1413911915
 
 # 💾 DATABASE
 DB_FILE = "users.json"
+if not os.path.exists(DB_FILE):
+    with open(DB_FILE, "w") as f:
+        json.dump({"users": [], "blocked": []}, f)
 
 def load_db():
-    if not os.path.exists(DB_FILE):
-        return {"users": [], "blocked": []}
-    with open(DB_FILE, "r") as f:
-        return json.load(f)
+    return json.load(open(DB_FILE))
 
 def save_db(data):
-    with open(DB_FILE, "w") as f:
-        json.dump(data, f)
+    json.dump(data, open(DB_FILE, "w"))
 
 db = load_db()
 users = set(db["users"])
-blocked_users = set(db["blocked"])
+blocked = set(db["blocked"])
 
 user_data = {}
 
 # 🔹 MENU
-def get_menu():
+def menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📄 TXT → VCF", callback_data="txttovcf"),
-         InlineKeyboardButton("📁 VCF → TXT", callback_data="vcftotxt")],
-        [InlineKeyboardButton("🔗 MERGE VCF", callback_data="mergevcf"),
-         InlineKeyboardButton("📝 MERGE TXT", callback_data="mergetxt")],
-        [InlineKeyboardButton("🔢 NUM → VCF", callback_data="numtovfc")],
+        [InlineKeyboardButton("📄 TXT → VCF", callback_data="txt")],
+        [InlineKeyboardButton("📁 VCF → TXT", callback_data="vcf")],
+        [InlineKeyboardButton("🔗 MERGE VCF", callback_data="mergevcf")],
+        [InlineKeyboardButton("📝 MERGE TXT", callback_data="mergetxt")],
+        [InlineKeyboardButton("🔢 NUM → VCF", callback_data="num")],
         [InlineKeyboardButton("♻️ RESET", callback_data="reset")]
     ])
 
 # 🔹 START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    user_id = user.id
+    uid = user.id
 
-    if user_id not in users:
-        users.add(user_id)
+    if uid not in users:
+        users.add(uid)
         db["users"] = list(users)
         save_db(db)
 
-        if user_id != OWNER_ID:
+        if uid != OWNER_ID:
             try:
                 await context.bot.send_message(
                     OWNER_ID,
-                    f"👤 New User Joined\n\n"
-                    f"ID: {user_id}\n"
-                    f"Name: {user.first_name}\n"
-                    f"Username: @{user.username}"
+                    f"👤 New User\nID: {uid}\nName: {user.first_name}\n@{user.username}"
                 )
             except:
                 pass
 
-    user_data[user_id] = {}
+    user_data[uid] = {}
 
-    await update.message.reply_text(
-        "MZ CV BOT PRO 🚀\nDEVELOPER : @mzpanel\nBOT CHAT : @mzcvchat",
-        reply_markup=get_menu()
-    )
+    await update.message.reply_text("MZ CV BOT PRO 🚀", reply_markup=menu())
 
-# 🔹 BROADCAST (IMPROVED)
+# 🔹 BROADCAST
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
 
-    if not context.args:
-        await update.message.reply_text("Usage: /broadcast your message")
-        return
-
     msg = " ".join(context.args)
-
-    success = 0
-    failed = 0
+    ok, fail = 0, 0
 
     for u in users.copy():
         try:
             await context.bot.send_message(u, msg)
-            success += 1
+            ok += 1
         except Forbidden:
-            blocked_users.add(u)
-            db["blocked"] = list(blocked_users)
+            blocked.add(u)
+            db["blocked"] = list(blocked)
             save_db(db)
-            failed += 1
+            fail += 1
         except:
-            failed += 1
+            fail += 1
 
-    await update.message.reply_text(
-        f"📢 Broadcast Done\n\n✅ Sent: {success}\n❌ Failed: {failed}"
-    )
+    await update.message.reply_text(f"Sent: {ok}\nFailed: {fail}")
 
-# 🔹 USERS COMMAND (NEW)
+# 🔹 USERS
 async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
 
     total = len(users)
-    blocked = len(blocked_users)
-    active = total - blocked
+    blocked_count = len(blocked)
+    active = total - blocked_count
 
     await update.message.reply_text(
-        f"👥 USERS DATA\n\n"
-        f"Total: {total}\n"
-        f"Active: {active}\n"
-        f"Blocked: {blocked}"
+        f"👥 Users\nTotal: {total}\nActive: {active}\nBlocked: {blocked_count}"
     )
 
 # 🔹 BUTTON
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
 
-    user = query.from_user.id
-    data = user_data.setdefault(user, {})
+    uid = q.from_user.id
+    data = user_data.setdefault(uid, {})
 
-    if query.data == "txttovcf":
-        data.update({"mode": "txt", "files": [], "step": "wait"})
-        await query.message.reply_text("📂 Send TXT file(s)\nThen type /done")
+    if q.data == "txt":
+        data.update({"mode": "txt", "step": "wait_file"})
+        await q.message.reply_text("Send TXT file")
 
-    elif query.data == "vcftotxt":
+    elif q.data == "vcf":
         data.update({"mode": "vcf", "files": []})
-        await query.message.reply_text("📂 Send VCF files\nThen type /done")
+        await q.message.reply_text("Send VCF files then /done")
 
-    elif query.data == "mergevcf":
+    elif q.data == "mergevcf":
         data.update({"mode": "mergevcf", "files": []})
-        await query.message.reply_text("📂 Send VCF files\nThen type /done")
+        await q.message.reply_text("Send VCF files then /done")
 
-    elif query.data == "mergetxt":
+    elif q.data == "mergetxt":
         data.update({"mode": "mergetxt", "files": []})
-        await query.message.reply_text("📂 Send TXT files\nThen type /done")
+        await q.message.reply_text("Send TXT files then /done")
 
-    elif query.data == "numtovfc":
-        data.update({"mode": "num", "step": "ask_count", "numbers": []})
-        await query.message.reply_text("How many numbers? (eg: 3)")
+    elif q.data == "num":
+        data.update({"mode": "num", "step": "count", "nums": []})
+        await q.message.reply_text("How many numbers?")
 
-    elif query.data == "reset":
-        user_data[user] = {}
-        await query.message.reply_text("♻️ Reset Done")
+    elif q.data == "reset":
+        user_data[uid] = {}
+        await q.message.reply_text("Reset Done")
 
-# 🔹 FILE HANDLER
-async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user.id
-    data = user_data.get(user, {})
-    mode = data.get("mode")
+# 🔹 FILE
+async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    data = user_data.get(uid, {})
 
     file = await update.message.document.get_file()
     name = update.message.document.file_name
     await file.download_to_drive(name)
 
-    if mode in ["txt", "vcf", "mergevcf", "mergetxt"]:
+    if data.get("mode") == "txt" and data.get("step") == "wait_file":
+        data["file"] = name
+        data["step"] = "ask_split"
+        await update.message.reply_text("Contacts per file?")
+
+    else:
         data.setdefault("files", []).append(name)
 
 # 🔹 DONE
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user.id
-    data = user_data.get(user, {})
-    mode = data.get("mode")
-    files = data.get("files", [])
+    uid = update.effective_user.id
+    data = user_data.get(uid, {})
 
-    if mode == "txt":
-        data["step"] = "ask_split"
-        await update.message.reply_text("Enter contacts per file (eg: 50)")
+    if data.get("mode") == "vcf":
+        for f in data["files"]:
+            out = f.replace(".vcf", ".txt")
+            with open(out, "w") as o:
+                for l in open(f):
+                    if "TEL" in l:
+                        o.write(l.split(":")[1])
+            await update.message.reply_document(open(out, "rb"))
 
-    elif mode == "vcf":
-        with open("output.txt", "w") as out:
-            for f in files:
-                with open(f) as file:
-                    for line in file:
-                        if "TEL" in line:
-                            out.write(line.split(":")[1])
-        await update.message.reply_document(open("output.txt", "rb"))
-        await update.message.reply_text("✅ Done")
-
-    elif mode == "mergevcf":
-        with open("merged.vcf", "w") as out:
-            for f in files:
-                out.write(open(f).read())
+    elif data.get("mode") == "mergevcf":
+        with open("merged.vcf", "w") as o:
+            for f in data["files"]:
+                o.write(open(f).read())
         await update.message.reply_document(open("merged.vcf", "rb"))
-        await update.message.reply_text("✅ Done")
 
-    elif mode == "mergetxt":
-        with open("merged.txt", "w") as out:
-            for f in files:
-                out.write(open(f).read())
+    elif data.get("mode") == "mergetxt":
+        with open("merged.txt", "w") as o:
+            for f in data["files"]:
+                o.write(open(f).read())
         await update.message.reply_document(open("merged.txt", "rb"))
-        await update.message.reply_text("✅ Done")
 
-# 🔹 TEXT HANDLER (UNCHANGED)
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user.id
-    text = update.message.text
-    data = user_data.get(user, {})
+    user_data[uid] = {}
+    await update.message.reply_text("✅ Done")
 
+# 🔹 TEXT
+async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    t = update.message.text
+    data = user_data.get(uid, {})
+
+    # TXT → VCF
     if data.get("mode") == "txt":
 
-        if data.get("step") == "ask_split":
-            data["split"] = int(text)
+        if data["step"] == "ask_split":
+            data["split"] = int(t)
             data["step"] = "ask_filename"
-            await update.message.reply_text("Enter file name")
+            await update.message.reply_text("File name?")
 
-        elif data.get("step") == "ask_filename":
-            data["filename"] = text
+        elif data["step"] == "ask_filename":
+            data["fname"] = t
             data["step"] = "ask_contact"
-            await update.message.reply_text("Enter contact name")
+            await update.message.reply_text("Contact name?")
 
-        elif data.get("step") == "ask_contact":
-            numbers = []
-            for f in data.get("files", []):
-                with open(f) as file:
-                    numbers.extend(file.read().splitlines())
+        elif data["step"] == "ask_contact":
+            nums = open(data["file"]).read().splitlines()
 
             split = data["split"]
-            filename = data["filename"]
-            contact = text
+            name = data["fname"]
+            cname = t
 
-            count = 1
-            file_index = 1
+            c = 1
+            i = 1
+            for x in range(0, len(nums), split):
+                part = nums[x:x+split]
+                fname = f"{name}_{i}.vcf"
 
-            for i in range(0, len(numbers), split):
-                part = numbers[i:i+split]
-                name = f"{filename}_{file_index}.vcf"
+                with open(fname, "w") as v:
+                    for n in part:
+                        v.write(f"BEGIN:VCARD\nVERSION:3.0\nFN:{cname} {c}\nTEL:{n}\nEND:VCARD\n")
+                        c += 1
 
-                with open(name, "w") as v:
-                    for num in part:
-                        v.write(f"BEGIN:VCARD\nVERSION:3.0\nFN:{contact} {count}\nTEL:{num}\nEND:VCARD\n")
-                        count += 1
+                await update.message.reply_document(open(fname, "rb"))
+                i += 1
 
-                await update.message.reply_document(open(name, "rb"))
-                file_index += 1
-
+            user_data[uid] = {}
             await update.message.reply_text("✅ Done")
 
+    # NUM → VCF
     elif data.get("mode") == "num":
 
-        if data.get("step") == "ask_count":
-            data["total"] = int(text)
+        if data["step"] == "count":
+            data["total"] = int(t)
             data["step"] = "collect"
-            await update.message.reply_text("Enter number 1 (use country code eg: +91)")
+            await update.message.reply_text("Enter number 1")
 
-        elif data.get("step") == "collect":
-            data["numbers"].append(text)
+        elif data["step"] == "collect":
+            data["nums"].append(t)
 
-            if len(data["numbers"]) < data["total"]:
-                await update.message.reply_text(f"Enter number {len(data['numbers'])+1}")
+            if len(data["nums"]) < data["total"]:
+                await update.message.reply_text(f"Enter number {len(data['nums'])+1}")
             else:
-                data["step"] = "ask_name"
-                await update.message.reply_text("Enter contact name")
+                data["step"] = "name"
+                await update.message.reply_text("Contact name?")
 
-        elif data.get("step") == "ask_name":
-            data["name"] = text
-            data["step"] = "ask_file"
-            await update.message.reply_text("Enter file name")
+        elif data["step"] == "name":
+            data["name"] = t
+            data["step"] = "file"
+            await update.message.reply_text("File name?")
 
-        elif data.get("step") == "ask_file":
-            filename = text
-            numbers = data["numbers"]
-            name = data["name"]
+        elif data["step"] == "file":
+            fname = f"{t}.vcf"
 
-            with open(f"{filename}.vcf", "w") as v:
-                for i, num in enumerate(numbers, 1):
-                    v.write(f"BEGIN:VCARD\nVERSION:3.0\nFN:{name} {i}\nTEL:{num}\nEND:VCARD\n")
+            with open(fname, "w") as v:
+                for i, n in enumerate(data["nums"], 1):
+                    v.write(f"BEGIN:VCARD\nVERSION:3.0\nFN:{data['name']} {i}\nTEL:{n}\nEND:VCARD\n")
 
-            await update.message.reply_document(open(f"{filename}.vcf", "rb"))
+            await update.message.reply_document(open(fname, "rb"))
+            user_data[uid] = {}
             await update.message.reply_text("✅ Done")
 
 # 🔹 RUN
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("done", done))
 app.add_handler(CommandHandler("broadcast", broadcast))
 app.add_handler(CommandHandler("users", users_cmd))
-app.add_handler(CallbackQueryHandler(button_handler))
-app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+app.add_handler(CommandHandler("done", done))
+app.add_handler(CallbackQueryHandler(button))
+app.add_handler(MessageHandler(filters.Document.ALL, file_handler))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
 
 print("🚀 Bot Running...")
 app.run_polling()
