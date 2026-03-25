@@ -189,7 +189,7 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data["step"] == "ask_filename":
             data["fname"] = t
             data["step"] = "ask_contact"
-            await update.message.reply_text("Contact name?")
+            await update.message.reply_text("Contacts name?")
 
         elif data["step"] == "ask_contact":
             nums = open(data["file"]).read().splitlines()
