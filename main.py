@@ -1,11 +1,12 @@
 import os
+import json
 from flask import Flask
 from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import Forbidden
 
-# 🔥 KEEP ALIVE SERVER
+# 🔥 KEEP ALIVE
 app_web = Flask('')
 
 @app_web.route('/')
@@ -13,19 +14,39 @@ def home():
     return "Bot is alive"
 
 def run():
-    app_web.run(host='0.0.0.0', port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app_web.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run)
+    t.daemon = True
     t.start()
 
 # 🔐 CONFIG
 TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = 1413911915
 
+if not TOKEN:
+    raise ValueError("❌ BOT_TOKEN not found")
+
+# 💾 DATABASE
+DB_FILE = "users.json"
+
+def load_db():
+    if not os.path.exists(DB_FILE):
+        return {"users": [], "blocked": []}
+    with open(DB_FILE, "r") as f:
+        return json.load(f)
+
+def save_db(data):
+    with open(DB_FILE, "w") as f:
+        json.dump(data, f)
+
+db = load_db()
+users = set(db["users"])
+blocked_users = set(db["blocked"])
+
 user_data = {}
-users = set()
-blocked_users = set()
 
 # 🔹 MENU
 def get_menu():
@@ -45,12 +66,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id not in users:
         users.add(user_id)
+        db["users"] = list(users)
+        save_db(db)
 
         if user_id != OWNER_ID:
             try:
                 await context.bot.send_message(
                     OWNER_ID,
-                    f"👤 New User Joined\n\nID: {user_id}\nName: {user.first_name}\nUsername: @{user.username}"
+                    f"👤 New User Joined\nID: {user_id}\nName: {user.first_name}\nUsername: @{user.username}"
                 )
             except:
                 pass
@@ -64,20 +87,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # 🔹 BROADCAST
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if user_id != OWNER_ID:
-        await update.message.reply_text("❌ Not allowed")
-        return
-
-    if not context.args:
-        await update.message.reply_text("Usage: /broadcast your message")
+    if update.effective_user.id != OWNER_ID:
         return
 
     msg = " ".join(context.args)
 
-    success = 0
-    failed = 0
+    success, failed = 0, 0
 
     for u in users.copy():
         try:
@@ -85,13 +100,13 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             success += 1
         except Forbidden:
             blocked_users.add(u)
+            db["blocked"] = list(blocked_users)
+            save_db(db)
             failed += 1
         except:
             failed += 1
 
-    await update.message.reply_text(
-        f"📢 Broadcast Done\n\n✅ Sent: {success}\n❌ Failed: {failed}"
-    )
+    await update.message.reply_text(f"✅ Sent: {success}\n❌ Failed: {failed}")
 
 # 🔹 USERS
 async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,7 +118,7 @@ async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     active = total - blocked
 
     await update.message.reply_text(
-        f"👥 USERS DATA\n\nTotal: {total}\nActive: {active}\nBlocked: {blocked}"
+        f"👥 USERS DATA\nTotal: {total}\nActive: {active}\nBlocked: {blocked}"
     )
 
 # 🔹 BUTTON
@@ -114,133 +129,60 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user.id
     data = user_data.setdefault(user, {})
 
-    if query.data == "txttovcf":
-        data.update({"mode": "txt", "files": [], "step": "wait"})
-        await query.message.reply_text("📂 Send TXT file(s)\nThen type /done")
+    if query.data == "numtovfc":
+        data["mode"] = "num"
+        data["numbers"] = []
+        data["step"] = "ask_count"
+        await query.message.reply_text("How many numbers?")
 
-    elif query.data == "vcftotxt":
-        data.update({"mode": "vcf", "files": []})
-        await query.message.reply_text("📂 Send VCF files\nThen type /done")
-
-    elif query.data == "mergevcf":
-        data.update({"mode": "mergevcf", "files": []})
-        await query.message.reply_text("📂 Send VCF files\nThen type /done")
-
-    elif query.data == "mergetxt":
-        data.update({"mode": "mergetxt", "files": []})
-        await query.message.reply_text("📂 Send TXT files\nThen type /done")
-
-    elif query.data == "numtovfc":
-        data.update({"mode": "num", "step": "ask_count", "numbers": []})
-        await query.message.reply_text("How many numbers? (eg: 3)")
-
-    elif query.data == "reset":
-        user_data[user] = {}
-        await query.message.reply_text("♻️ Reset Done")
-
-# 🔹 FILE
-async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user.id
-    data = user_data.get(user, {})
-    mode = data.get("mode")
-
-    file = await update.message.document.get_file()
-    name = update.message.document.file_name
-    await file.download_to_drive(name)
-
-    if mode in ["txt", "vcf", "mergevcf", "mergetxt"]:
-        data.setdefault("files", []).append(name)
-
-# 🔹 DONE
-async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user.id
-    data = user_data.get(user, {})
-    mode = data.get("mode")
-    files = data.get("files", [])
-
-    if mode == "txt":
-        data["step"] = "ask_split"
-        await update.message.reply_text("Enter contacts per file (eg: 50)")
-
-    elif mode == "vcf":
-        with open("output.txt", "w") as out:
-            for f in files:
-                with open(f) as file:
-                    for line in file:
-                        if "TEL" in line:
-                            out.write(line.split(":")[1])
-        await update.message.reply_document(open("output.txt", "rb"))
-
-    elif mode == "mergevcf":
-        with open("merged.vcf", "w") as out:
-            for f in files:
-                out.write(open(f).read())
-        await update.message.reply_document(open("merged.vcf", "rb"))
-
-    elif mode == "mergetxt":
-        with open("merged.txt", "w") as out:
-            for f in files:
-                out.write(open(f).read())
-        await update.message.reply_document(open("merged.txt", "rb"))
-
-    await update.message.reply_text("✅ Done")
-
-# 🔹 TEXT
+# 🔹 TEXT HANDLER
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.id
     text = update.message.text
     data = user_data.get(user, {})
 
-    if data.get("mode") == "txt":
+    # 🔢 NUM → VCF FIXED
+    if data.get("mode") == "num":
 
-        if data.get("step") == "ask_split":
-            data["split"] = int(text)
-            data["step"] = "ask_filename"
+        if data.get("step") == "ask_count":
+            data["total"] = int(text)
+            data["step"] = "collect"
+            await update.message.reply_text("Enter number 1")
+
+        elif data.get("step") == "collect":
+            data["numbers"].append(text)
+
+            if len(data["numbers"]) < data["total"]:
+                await update.message.reply_text(f"Enter number {len(data['numbers'])+1}")
+            else:
+                data["step"] = "ask_name"
+                await update.message.reply_text("Enter contact name")
+
+        elif data.get("step") == "ask_name":
+            data["name"] = text
+            data["step"] = "ask_file"
             await update.message.reply_text("Enter file name")
 
-        elif data.get("step") == "ask_filename":
-            data["filename"] = text
-            data["step"] = "ask_contact"
-            await update.message.reply_text("Enter contact name")
+        elif data.get("step") == "ask_file":
+            filename = text
+            name = data["name"]
 
-        elif data.get("step") == "ask_contact":
-            numbers = []
-            for f in data.get("files", []):
-                with open(f) as file:
-                    numbers.extend(file.read().splitlines())
+            with open(f"{filename}.vcf", "w") as v:
+                for i, num in enumerate(data["numbers"], 1):
+                    v.write(f"BEGIN:VCARD\nVERSION:3.0\nFN:{name} {i}\nTEL:{num}\nEND:VCARD\n")
 
-            split = data["split"]
-            filename = data["filename"]
-            contact = text
-
-            count = 1
-            file_index = 1
-
-            for i in range(0, len(numbers), split):
-                part = numbers[i:i+split]
-                name = f"{filename}_{file_index}.vcf"
-
-                with open(name, "w") as v:
-                    for num in part:
-                        v.write(f"BEGIN:VCARD\nVERSION:3.0\nFN:{contact} {count}\nTEL:{num}\nEND:VCARD\n")
-                        count += 1
-
-                await update.message.reply_document(open(name, "rb"))
-                file_index += 1
-
+            await update.message.reply_document(open(f"{filename}.vcf", "rb"))
             await update.message.reply_text("✅ Done")
 
 # 🔹 RUN
-keep_alive()  # 🔥 important
+keep_alive()
 
 tg_app = ApplicationBuilder().token(TOKEN).build()
 
 tg_app.add_handler(CommandHandler("start", start))
-tg_app.add_handler(CommandHandler("done", done))
 tg_app.add_handler(CommandHandler("broadcast", broadcast))
 tg_app.add_handler(CommandHandler("users", users_cmd))
 tg_app.add_handler(CallbackQueryHandler(button_handler))
-tg_app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
 tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
 print("🚀 Bot Running...")
