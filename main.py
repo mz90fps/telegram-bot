@@ -20,7 +20,7 @@ def keep_alive():
     t.start()
 
 # 🔐 CONFIG
-TOKEN = os.getenv("8718356402:AAEFfOf52TgJ1SLkiC-d2W_gtsUK48rYLE4")
+TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = 1413911915
 
 user_data = {}
