@@ -1,12 +1,31 @@
 import os
+from flask import Flask
+from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.error import Forbidden
 
-TOKEN = "8718356402:AAEFfOf52TgJ1SLkiC-d2W_gtsUK48rYLE4"
+# 🔥 KEEP ALIVE SERVER
+app_web = Flask('')
+
+@app_web.route('/')
+def home():
+    return "Bot is alive"
+
+def run():
+    app_web.run(host='0.0.0.0', port=10000)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# 🔐 CONFIG
+TOKEN = os.getenv("8718356402:AAEFfOf52TgJ1SLkiC-d2W_gtsUK48rYLE4")
 OWNER_ID = 1413911915
 
 user_data = {}
 users = set()
+blocked_users = set()
 
 # 🔹 MENU
 def get_menu():
@@ -24,19 +43,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
 
-    # Save user
     if user_id not in users:
         users.add(user_id)
 
-        # Notify owner
         if user_id != OWNER_ID:
             try:
                 await context.bot.send_message(
                     OWNER_ID,
-                    f"👤 New User Joined\n\n"
-                    f"ID: {user_id}\n"
-                    f"Name: {user.first_name}\n"
-                    f"Username: @{user.username}"
+                    f"👤 New User Joined\n\nID: {user_id}\nName: {user.first_name}\nUsername: @{user.username}"
                 )
             except:
                 pass
@@ -48,7 +62,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=get_menu()
     )
 
-# 🔹 BROADCAST (OWNER ONLY)
+# 🔹 BROADCAST
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -63,14 +77,34 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = " ".join(context.args)
 
     success = 0
-    for u in users:
+    failed = 0
+
+    for u in users.copy():
         try:
             await context.bot.send_message(u, msg)
             success += 1
+        except Forbidden:
+            blocked_users.add(u)
+            failed += 1
         except:
-            pass
+            failed += 1
 
-    await update.message.reply_text(f"✅ Sent to {success} users")
+    await update.message.reply_text(
+        f"📢 Broadcast Done\n\n✅ Sent: {success}\n❌ Failed: {failed}"
+    )
+
+# 🔹 USERS
+async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
+        return
+
+    total = len(users)
+    blocked = len(blocked_users)
+    active = total - blocked
+
+    await update.message.reply_text(
+        f"👥 USERS DATA\n\nTotal: {total}\nActive: {active}\nBlocked: {blocked}"
+    )
 
 # 🔹 BUTTON
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,7 +138,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[user] = {}
         await query.message.reply_text("♻️ Reset Done")
 
-# 🔹 FILE HANDLER
+# 🔹 FILE
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.id
     data = user_data.get(user, {})
@@ -136,23 +170,22 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if "TEL" in line:
                             out.write(line.split(":")[1])
         await update.message.reply_document(open("output.txt", "rb"))
-        await update.message.reply_text("✅ Done")
 
     elif mode == "mergevcf":
         with open("merged.vcf", "w") as out:
             for f in files:
                 out.write(open(f).read())
         await update.message.reply_document(open("merged.vcf", "rb"))
-        await update.message.reply_text("✅ Done")
 
     elif mode == "mergetxt":
         with open("merged.txt", "w") as out:
             for f in files:
                 out.write(open(f).read())
         await update.message.reply_document(open("merged.txt", "rb"))
-        await update.message.reply_text("✅ Done")
 
-# 🔹 TEXT HANDLER
+    await update.message.reply_text("✅ Done")
+
+# 🔹 TEXT
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.id
     text = update.message.text
@@ -197,48 +230,18 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_text("✅ Done")
 
-    elif data.get("mode") == "num":
-
-        if data.get("step") == "ask_count":
-            data["total"] = int(text)
-            data["step"] = "collect"
-            await update.message.reply_text("Enter number 1 (use country code eg: +91)")
-
-        elif data.get("step") == "collect":
-            data["numbers"].append(text)
-
-            if len(data["numbers"]) < data["total"]:
-                await update.message.reply_text(f"Enter number {len(data['numbers'])+1}")
-            else:
-                data["step"] = "ask_name"
-                await update.message.reply_text("Enter contact name")
-
-        elif data.get("step") == "ask_name":
-            data["name"] = text
-            data["step"] = "ask_file"
-            await update.message.reply_text("Enter file name")
-
-        elif data.get("step") == "ask_file":
-            filename = text
-            numbers = data["numbers"]
-            name = data["name"]
-
-            with open(f"{filename}.vcf", "w") as v:
-                for i, num in enumerate(numbers, 1):
-                    v.write(f"BEGIN:VCARD\nVERSION:3.0\nFN:{name} {i}\nTEL:{num}\nEND:VCARD\n")
-
-            await update.message.reply_document(open(f"{filename}.vcf", "rb"))
-            await update.message.reply_text("✅ Done")
-
 # 🔹 RUN
-app = ApplicationBuilder().token(TOKEN).build()
+keep_alive()  # 🔥 important
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("done", done))
-app.add_handler(CommandHandler("broadcast", broadcast))  # 👈 added
-app.add_handler(CallbackQueryHandler(button_handler))
-app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+tg_app = ApplicationBuilder().token(TOKEN).build()
+
+tg_app.add_handler(CommandHandler("start", start))
+tg_app.add_handler(CommandHandler("done", done))
+tg_app.add_handler(CommandHandler("broadcast", broadcast))
+tg_app.add_handler(CommandHandler("users", users_cmd))
+tg_app.add_handler(CallbackQueryHandler(button_handler))
+tg_app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
+tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
 print("🚀 Bot Running...")
-app.run_polling()
+tg_app.run_polling()
