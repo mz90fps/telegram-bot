@@ -1,12 +1,30 @@
 import os
+import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.error import Forbidden
 
-TOKEN = "BOT_TOKEN"
+TOKEN = os.getenv("BOT_TOKEN")  # 🔐 SAFE
 OWNER_ID = 1413911915
 
+# 💾 DATABASE
+DB_FILE = "users.json"
+
+def load_db():
+    if not os.path.exists(DB_FILE):
+        return {"users": [], "blocked": []}
+    with open(DB_FILE, "r") as f:
+        return json.load(f)
+
+def save_db(data):
+    with open(DB_FILE, "w") as f:
+        json.dump(data, f)
+
+db = load_db()
+users = set(db["users"])
+blocked_users = set(db["blocked"])
+
 user_data = {}
-users = set()
 
 # 🔹 MENU
 def get_menu():
@@ -24,11 +42,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
 
-    # Save user
     if user_id not in users:
         users.add(user_id)
+        db["users"] = list(users)
+        save_db(db)
 
-        # Notify owner
         if user_id != OWNER_ID:
             try:
                 await context.bot.send_message(
@@ -48,12 +66,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=get_menu()
     )
 
-# 🔹 BROADCAST (OWNER ONLY)
+# 🔹 BROADCAST (IMPROVED)
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if user_id != OWNER_ID:
-        await update.message.reply_text("❌ Not allowed")
+    if update.effective_user.id != OWNER_ID:
         return
 
     if not context.args:
@@ -63,14 +78,39 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = " ".join(context.args)
 
     success = 0
-    for u in users:
+    failed = 0
+
+    for u in users.copy():
         try:
             await context.bot.send_message(u, msg)
             success += 1
+        except Forbidden:
+            blocked_users.add(u)
+            db["blocked"] = list(blocked_users)
+            save_db(db)
+            failed += 1
         except:
-            pass
+            failed += 1
 
-    await update.message.reply_text(f"✅ Sent to {success} users")
+    await update.message.reply_text(
+        f"📢 Broadcast Done\n\n✅ Sent: {success}\n❌ Failed: {failed}"
+    )
+
+# 🔹 USERS COMMAND (NEW)
+async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
+        return
+
+    total = len(users)
+    blocked = len(blocked_users)
+    active = total - blocked
+
+    await update.message.reply_text(
+        f"👥 USERS DATA\n\n"
+        f"Total: {total}\n"
+        f"Active: {active}\n"
+        f"Blocked: {blocked}"
+    )
 
 # 🔹 BUTTON
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -152,7 +192,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_document(open("merged.txt", "rb"))
         await update.message.reply_text("✅ Done")
 
-# 🔹 TEXT HANDLER
+# 🔹 TEXT HANDLER (UNCHANGED)
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.id
     text = update.message.text
@@ -235,7 +275,8 @@ app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("done", done))
-app.add_handler(CommandHandler("broadcast", broadcast))  # 👈 added
+app.add_handler(CommandHandler("broadcast", broadcast))
+app.add_handler(CommandHandler("users", users_cmd))
 app.add_handler(CallbackQueryHandler(button_handler))
 app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
