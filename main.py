@@ -2,9 +2,11 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-TOKEN = "8718356402:AAGRDx337Ss64wlyrOZRDk9j5Mr-YVsdXcY"
+TOKEN = "8718356402:AAEFfOf52TgJ1SLkiC-d2W_gtsUK48rYLE4"
+OWNER_ID = 1413911915
 
 user_data = {}
+users = set()
 
 # 🔹 MENU
 def get_menu():
@@ -19,11 +21,56 @@ def get_menu():
 
 # 🔹 START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data[update.effective_user.id] = {}
+    user = update.effective_user
+    user_id = user.id
+
+    # Save user
+    if user_id not in users:
+        users.add(user_id)
+
+        # Notify owner
+        if user_id != OWNER_ID:
+            try:
+                await context.bot.send_message(
+                    OWNER_ID,
+                    f"👤 New User Joined\n\n"
+                    f"ID: {user_id}\n"
+                    f"Name: {user.first_name}\n"
+                    f"Username: @{user.username}"
+                )
+            except:
+                pass
+
+    user_data[user_id] = {}
+
     await update.message.reply_text(
         "MZ CV BOT PRO 🚀\nDEVELOPER : @mzpanel\nBOT CHAT : @mzcvchat",
         reply_markup=get_menu()
     )
+
+# 🔹 BROADCAST (OWNER ONLY)
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id != OWNER_ID:
+        await update.message.reply_text("❌ Not allowed")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Usage: /broadcast your message")
+        return
+
+    msg = " ".join(context.args)
+
+    success = 0
+    for u in users:
+        try:
+            await context.bot.send_message(u, msg)
+            success += 1
+        except:
+            pass
+
+    await update.message.reply_text(f"✅ Sent to {success} users")
 
 # 🔹 BUTTON
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -77,12 +124,10 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = data.get("mode")
     files = data.get("files", [])
 
-    # TXT FLOW
     if mode == "txt":
         data["step"] = "ask_split"
         await update.message.reply_text("Enter contacts per file (eg: 50)")
 
-    # VCF → TXT
     elif mode == "vcf":
         with open("output.txt", "w") as out:
             for f in files:
@@ -93,7 +138,6 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_document(open("output.txt", "rb"))
         await update.message.reply_text("✅ Done")
 
-    # MERGE VCF
     elif mode == "mergevcf":
         with open("merged.vcf", "w") as out:
             for f in files:
@@ -101,7 +145,6 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_document(open("merged.vcf", "rb"))
         await update.message.reply_text("✅ Done")
 
-    # MERGE TXT
     elif mode == "mergetxt":
         with open("merged.txt", "w") as out:
             for f in files:
@@ -115,7 +158,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     data = user_data.get(user, {})
 
-    # TXT → VCF FLOW
     if data.get("mode") == "txt":
 
         if data.get("step") == "ask_split":
@@ -155,7 +197,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_text("✅ Done")
 
-    # NUM → VCF
     elif data.get("mode") == "num":
 
         if data.get("step") == "ask_count":
@@ -194,6 +235,7 @@ app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("done", done))
+app.add_handler(CommandHandler("broadcast", broadcast))  # 👈 added
 app.add_handler(CallbackQueryHandler(button_handler))
 app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
