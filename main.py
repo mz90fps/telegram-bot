@@ -1,7 +1,7 @@
 import os
 import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters, CallbackContext
 from telegram.error import Forbidden
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -37,7 +37,7 @@ def menu():
     ])
 
 # 🔹 START
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start(update: Update, context: CallbackContext):
     user = update.effective_user
     uid = user.id
 
@@ -48,7 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if uid != OWNER_ID:
             try:
-                await context.bot.send_message(
+                context.bot.send_message(
                     OWNER_ID,
                     f"👤 New User\nID: {uid}\nName: {user.first_name}\n@{user.username}"
                 )
@@ -57,10 +57,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_data[uid] = {}
 
-    await update.message.reply_text("MZ CV BOT PRO 🚀\nDEVELOPER : @mzpanel\nBOT CHAT : @mzcvchat", reply_markup=menu())
+    update.message.reply_text("MZ CV BOT PRO 🚀\nDEVELOPER : @mzpanel\nBOT CHAT : @mzcvchat", reply_markup=menu())
 
 # 🔹 BROADCAST
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def broadcast(update: Update, context: CallbackContext):
     if update.effective_user.id != OWNER_ID:
         return
 
@@ -69,7 +69,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for u in users.copy():
         try:
-            await context.bot.send_message(u, msg)
+            context.bot.send_message(u, msg)
             ok += 1
         except Forbidden:
             blocked.add(u)
@@ -79,10 +79,10 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             fail += 1
 
-    await update.message.reply_text(f"Sent: {ok}\nFailed: {fail}")
+    update.message.reply_text(f"Sent: {ok}\nFailed: {fail}")
 
 # 🔹 USERS
-async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def users_cmd(update: Update, context: CallbackContext):
     if update.effective_user.id != OWNER_ID:
         return
 
@@ -90,61 +90,61 @@ async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     blocked_count = len(blocked)
     active = total - blocked_count
 
-    await update.message.reply_text(
+    update.message.reply_text(
         f"👥 Users\nTotal: {total}\nActive: {active}\nBlocked: {blocked_count}"
     )
 
 # 🔹 BUTTON
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def button(update: Update, context: CallbackContext):
     q = update.callback_query
-    await q.answer()
+    q.answer()
 
     uid = q.from_user.id
     data = user_data.setdefault(uid, {})
 
     if q.data == "txt":
         data.update({"mode": "txt", "step": "wait_file"})
-        await q.message.reply_text("Send TXT file")
+        q.message.reply_text("Send TXT file")
 
     elif q.data == "vcf":
         data.update({"mode": "vcf", "files": []})
-        await q.message.reply_text("Send VCF files \nthen click /done")
+        q.message.reply_text("Send VCF files \nthen click /done")
 
     elif q.data == "mergevcf":
         data.update({"mode": "mergevcf", "files": []})
-        await q.message.reply_text("Send VCF files  \nthen click /done")
+        q.message.reply_text("Send VCF files  \nthen click /done")
 
     elif q.data == "mergetxt":
         data.update({"mode": "mergetxt", "files": []})
-        await q.message.reply_text("Send TXT files  \nthen click /done")
+        q.message.reply_text("Send TXT files  \nthen click /done")
 
     elif q.data == "num":
         data.update({"mode": "num", "step": "count", "nums": []})
-        await q.message.reply_text("How many numbers?(eg:3)")
+        q.message.reply_text("How many numbers?(eg:3)")
 
     elif q.data == "reset":
         user_data[uid] = {}
-        await q.message.reply_text("Reset Done♻️")
+        q.message.reply_text("Reset Done♻️")
 
 # 🔹 FILE
-async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def file_handler(update: Update, context: CallbackContext):
     uid = update.effective_user.id
     data = user_data.get(uid, {})
 
-    file = await update.message.document.get_file()
+    file = update.message.document.get_file()
     name = update.message.document.file_name
-    await file.download_to_drive(name)
+    file.download(name)
 
     if data.get("mode") == "txt" and data.get("step") == "wait_file":
         data["file"] = name
         data["step"] = "ask_split"
-        await update.message.reply_text("How much Contacts per file? (eg:50)")
+        update.message.reply_text("How much Contacts per file? (eg:50)")
 
     else:
         data.setdefault("files", []).append(name)
 
 # 🔹 DONE
-async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def done(update: Update, context: CallbackContext):
     uid = update.effective_user.id
     data = user_data.get(uid, {})
 
@@ -155,25 +155,25 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for l in open(f):
                     if "TEL" in l:
                         o.write(l.split(":")[1])
-            await update.message.reply_document(open(out, "rb"))
+            update.message.reply_document(open(out, "rb"))
 
     elif data.get("mode") == "mergevcf":
         with open("merged.vcf", "w") as o:
             for f in data["files"]:
                 o.write(open(f).read())
-        await update.message.reply_document(open("merged.vcf", "rb"))
+        update.message.reply_document(open("merged.vcf", "rb"))
 
     elif data.get("mode") == "mergetxt":
         with open("merged.txt", "w") as o:
             for f in data["files"]:
                 o.write(open(f).read())
-        await update.message.reply_document(open("merged.txt", "rb"))
+        update.message.reply_document(open("merged.txt", "rb"))
 
     user_data[uid] = {}
-    await update.message.reply_text("✅ Done bro")
+    update.message.reply_text("✅ Done bro")
 
 # 🔹 TEXT
-async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def text(update: Update, context: CallbackContext):
     uid = update.effective_user.id
     t = update.message.text
     data = user_data.get(uid, {})
@@ -184,12 +184,12 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data["step"] == "ask_split":
             data["split"] = int(t)
             data["step"] = "ask_filename"
-            await update.message.reply_text("File name?")
+            update.message.reply_text("File name?")
 
         elif data["step"] == "ask_filename":
             data["fname"] = t
             data["step"] = "ask_contact"
-            await update.message.reply_text("Contacts name?")
+            update.message.reply_text("Contacts name?")
 
         elif data["step"] == "ask_contact":
             nums = open(data["file"]).read().splitlines()
@@ -209,11 +209,11 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         v.write(f"BEGIN:VCARD\nVERSION:3.0\nFN:{cname} {c}\nTEL:{n}\nEND:VCARD\n")
                         c += 1
 
-                await update.message.reply_document(open(fname, "rb"))
+                update.message.reply_document(open(fname, "rb"))
                 i += 1
 
             user_data[uid] = {}
-            await update.message.reply_text("✅ Done bro")
+            update.message.reply_text("✅ Done bro")
 
     # NUM → VCF
     elif data.get("mode") == "num":
@@ -221,21 +221,21 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data["step"] == "count":
             data["total"] = int(t)
             data["step"] = "collect"
-            await update.message.reply_text("Enter number 1\n(include country code also (eg:+91****...)")
+            update.message.reply_text("Enter number 1\n(include country code also (eg:+91****...)")
 
         elif data["step"] == "collect":
             data["nums"].append(t)
 
             if len(data["nums"]) < data["total"]:
-                await update.message.reply_text(f"Enter number {len(data['nums'])+1}")
+                update.message.reply_text(f"Enter number {len(data['nums'])+1}")
             else:
                 data["step"] = "name"
-                await update.message.reply_text("Contacts name?")
+                update.message.reply_text("Contacts name?")
 
         elif data["step"] == "name":
             data["name"] = t
             data["step"] = "file"
-            await update.message.reply_text("File name?")
+            update.message.reply_text("File name?")
 
         elif data["step"] == "file":
             fname = f"{t}.vcf"
@@ -244,20 +244,22 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for i, n in enumerate(data["nums"], 1):
                     v.write(f"BEGIN:VCARD\nVERSION:3.0\nFN:{data['name']} {i}\nTEL:{n}\nEND:VCARD\n")
 
-            await update.message.reply_document(open(fname, "rb"))
+            update.message.reply_document(open(fname, "rb"))
             user_data[uid] = {}
-            await update.message.reply_text("✅ Done bro")
+            update.message.reply_text("✅ Done bro")
 
 # 🔹 RUN
-app = ApplicationBuilder().token(TOKEN).build()
+updater = Updater(TOKEN, use_context=True)
+dp = updater.dispatcher
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("broadcast", broadcast))
-app.add_handler(CommandHandler("users", users_cmd))
-app.add_handler(CommandHandler("done", done))
-app.add_handler(CallbackQueryHandler(button))
-app.add_handler(MessageHandler(filters.Document.ALL, file_handler))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text))
+dp.add_handler(CommandHandler("start", start))
+dp.add_handler(CommandHandler("broadcast", broadcast))
+dp.add_handler(CommandHandler("users", users_cmd))
+dp.add_handler(CommandHandler("done", done))
+dp.add_handler(CallbackQueryHandler(button))
+dp.add_handler(MessageHandler(Filters.document, file_handler))
+dp.add_handler(MessageHandler(Filters.text & ~Filters.command, text))
 
 print("🚀 Bot Running...")
-app.run_polling()
+updater.start_polling()
+updater.idle()
