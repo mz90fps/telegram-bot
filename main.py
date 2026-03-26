@@ -4,20 +4,22 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import Forbidden
 
-TOKEN = "8718356402:AAGifvFUgHc4vt6mr0b2aRL2GfFd61XJvZ0"
+TOKEN = "YOUR_TOKEN_HERE"
 OWNER_ID = 1413911915
 
-# 💾 DATABASE
 DB_FILE = "users.json"
+
 if not os.path.exists(DB_FILE):
     with open(DB_FILE, "w") as f:
         json.dump({"users": [], "blocked": []}, f)
 
 def load_db():
-    return json.load(open(DB_FILE))
+    with open(DB_FILE) as f:
+        return json.load(f)
 
 def save_db(data):
-    json.dump(data, open(DB_FILE, "w"))
+    with open(DB_FILE, "w") as f:
+        json.dump(data, f)
 
 db = load_db()
 users = set(db["users"])
@@ -25,7 +27,6 @@ blocked = set(db["blocked"])
 
 user_data = {}
 
-# 🔹 MENU (✅ FIXED LAYOUT)
 def menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📄 TXT → VCF", callback_data="txt"),
@@ -39,7 +40,6 @@ def menu():
         [InlineKeyboardButton("♻️ RESET", callback_data="reset")]
     ])
 
-# 🔹 START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
@@ -49,15 +49,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db["users"] = list(users)
         save_db(db)
 
-        if uid != OWNER_ID:
-            try:
-                await context.bot.send_message(
-                    OWNER_ID,
-                    f"👤 New User\nID: {uid}\nName: {user.first_name}\n@{user.username}"
-                )
-            except:
-                pass
-
     user_data[uid] = {}
 
     await update.message.reply_text(
@@ -65,7 +56,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=menu()
     )
 
-# 🔹 BROADCAST
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
@@ -77,30 +67,17 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(u, msg)
             ok += 1
-        except Forbidden:
-            blocked.add(u)
-            db["blocked"] = list(blocked)
-            save_db(db)
-            fail += 1
         except:
             fail += 1
 
     await update.message.reply_text(f"Sent: {ok}\nFailed: {fail}")
 
-# 🔹 USERS
 async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
 
-    total = len(users)
-    blocked_count = len(blocked)
-    active = total - blocked_count
+    await update.message.reply_text(f"Total Users: {len(users)}")
 
-    await update.message.reply_text(
-        f"👥 Users\nTotal: {total}\nActive: {active}\nBlocked: {blocked_count}"
-    )
-
-# 🔹 BUTTON
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -126,30 +103,29 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif q.data == "num":
         data.update({"mode": "num", "step": "count", "nums": []})
-        await q.message.reply_text("How many numbers? (eg:3)")
+        await q.message.reply_text("How many numbers?")
 
     elif q.data == "reset":
         user_data[uid] = {}
         await q.message.reply_text("Reset Done ♻️")
 
-# 🔹 FILE
 async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     data = user_data.get(uid, {})
 
-    file = await update.message.document.get_file()
-    name = update.message.document.file_name
+    doc = update.message.document
+    file = await doc.get_file()
+    name = doc.file_name
+
     await file.download_to_drive(name)
 
     if data.get("mode") == "txt" and data.get("step") == "wait_file":
         data["file"] = name
         data["step"] = "ask_split"
         await update.message.reply_text("How many contacts per file?")
-
     else:
         data.setdefault("files", []).append(name)
 
-# 🔹 DONE
 async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     data = user_data.get(uid, {})
@@ -178,7 +154,6 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data[uid] = {}
     await update.message.reply_text("✅ Done")
 
-# 🔹 TEXT
 async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     t = update.message.text
@@ -225,7 +200,7 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data["step"] == "count":
             data["total"] = int(t)
             data["step"] = "collect"
-            await update.message.reply_text("Enter number 1 (include country code, eg:+91.......)")
+            await update.message.reply_text("Enter number 1 (+91...)")
 
         elif data["step"] == "collect":
             data["nums"].append(t)
@@ -252,7 +227,6 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_data[uid] = {}
             await update.message.reply_text("✅ Done bro🔥")
 
-# 🔹 RUN
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
