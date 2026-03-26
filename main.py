@@ -4,7 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import Forbidden
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("8718356402:AAGifvFUgHc4vt6mr0b2aRL2GfFd61XJvZ0")
 OWNER_ID = 1413911915
 
 # 💾 DATABASE
