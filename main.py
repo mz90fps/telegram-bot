@@ -4,7 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import Forbidden
 
-TOKEN = "YOUR_TOKEN_HERE"
+TOKEN = "8718356402:AAGifvFUgHc4vt6mr0b2aRL2GfFd61XJvZ0"
 OWNER_ID = 1413911915
 
 DB_FILE = "users.json"
