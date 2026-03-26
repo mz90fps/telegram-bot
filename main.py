@@ -218,14 +218,14 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 i += 1
 
             user_data[uid] = {}
-            await update.message.reply_text("✅ Done")
+            await update.message.reply_text("✅ Done bro🔥")
 
     elif data.get("mode") == "num":
 
         if data["step"] == "count":
             data["total"] = int(t)
             data["step"] = "collect"
-            await update.message.reply_text("Enter number 1 (+91...)")
+            await update.message.reply_text("Enter number 1 (include country code, eg:+91.......)")
 
         elif data["step"] == "collect":
             data["nums"].append(t)
@@ -234,7 +234,7 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"Enter number {len(data['nums'])+1}")
             else:
                 data["step"] = "name"
-                await update.message.reply_text("Contact name?")
+                await update.message.reply_text("Contacts name?")
 
         elif data["step"] == "name":
             data["name"] = t
@@ -250,7 +250,7 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_document(open(fname, "rb"))
             user_data[uid] = {}
-            await update.message.reply_text("✅ Done")
+            await update.message.reply_text("✅ Done bro🔥")
 
 # 🔹 RUN
 app = ApplicationBuilder().token(TOKEN).build()
