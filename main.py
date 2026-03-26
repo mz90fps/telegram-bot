@@ -25,14 +25,17 @@ blocked = set(db["blocked"])
 
 user_data = {}
 
-# 🔹 MENU
+# 🔹 MENU (✅ FIXED LAYOUT)
 def menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📄 TXT → VCF", callback_data="txt")],
-        [InlineKeyboardButton("📁 VCF → TXT", callback_data="vcf")],
-        [InlineKeyboardButton("🔗 MERGE VCF", callback_data="mergevcf")],
-        [InlineKeyboardButton("📝 MERGE TXT", callback_data="mergetxt")],
+        [InlineKeyboardButton("📄 TXT → VCF", callback_data="txt"),
+         InlineKeyboardButton("📁 VCF → TXT", callback_data="vcf")],
+
+        [InlineKeyboardButton("🔗 MERGE VCF", callback_data="mergevcf"),
+         InlineKeyboardButton("📝 MERGE TXT", callback_data="mergetxt")],
+
         [InlineKeyboardButton("🔢 NUM → VCF", callback_data="num")],
+
         [InlineKeyboardButton("♻️ RESET", callback_data="reset")]
     ])
 
@@ -57,7 +60,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_data[uid] = {}
 
-    await update.message.reply_text("MZ CV BOT PRO 🚀\nDEVELOPER : @mzpanel\nBOT CHAT : @mzcvchat", reply_markup=menu())
+    await update.message.reply_text(
+        "MZ CV BOT PRO 🚀\nDEVELOPER : @mzpanel\nBOT CHAT : @mzcvchat",
+        reply_markup=menu()
+    )
 
 # 🔹 BROADCAST
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -108,23 +114,23 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif q.data == "vcf":
         data.update({"mode": "vcf", "files": []})
-        await q.message.reply_text("Send VCF files \nthen click /done")
+        await q.message.reply_text("Send VCF files\nThen use /done")
 
     elif q.data == "mergevcf":
         data.update({"mode": "mergevcf", "files": []})
-        await q.message.reply_text("Send VCF files  \nthen click /done")
+        await q.message.reply_text("Send VCF files\nThen use /done")
 
     elif q.data == "mergetxt":
         data.update({"mode": "mergetxt", "files": []})
-        await q.message.reply_text("Send TXT files  \nthen click /done")
+        await q.message.reply_text("Send TXT files\nThen use /done")
 
     elif q.data == "num":
         data.update({"mode": "num", "step": "count", "nums": []})
-        await q.message.reply_text("How many numbers?(eg:3)")
+        await q.message.reply_text("How many numbers? (eg:3)")
 
     elif q.data == "reset":
         user_data[uid] = {}
-        await q.message.reply_text("Reset Done♻️")
+        await q.message.reply_text("Reset Done ♻️")
 
 # 🔹 FILE
 async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -138,7 +144,7 @@ async def file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.get("mode") == "txt" and data.get("step") == "wait_file":
         data["file"] = name
         data["step"] = "ask_split"
-        await update.message.reply_text("How much Contacts per file? (eg:50)")
+        await update.message.reply_text("How many contacts per file?")
 
     else:
         data.setdefault("files", []).append(name)
@@ -170,7 +176,7 @@ async def done(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_document(open("merged.txt", "rb"))
 
     user_data[uid] = {}
-    await update.message.reply_text("✅ Done bro")
+    await update.message.reply_text("✅ Done")
 
 # 🔹 TEXT
 async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,7 +184,6 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     t = update.message.text
     data = user_data.get(uid, {})
 
-    # TXT → VCF
     if data.get("mode") == "txt":
 
         if data["step"] == "ask_split":
@@ -189,7 +194,7 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data["step"] == "ask_filename":
             data["fname"] = t
             data["step"] = "ask_contact"
-            await update.message.reply_text("Contacts name?")
+            await update.message.reply_text("Contact name?")
 
         elif data["step"] == "ask_contact":
             nums = open(data["file"]).read().splitlines()
@@ -213,15 +218,14 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 i += 1
 
             user_data[uid] = {}
-            await update.message.reply_text("✅ Done bro")
+            await update.message.reply_text("✅ Done")
 
-    # NUM → VCF
     elif data.get("mode") == "num":
 
         if data["step"] == "count":
             data["total"] = int(t)
             data["step"] = "collect"
-            await update.message.reply_text("Enter number 1\n(include country code also (eg:+91****...)")
+            await update.message.reply_text("Enter number 1 (+91...)")
 
         elif data["step"] == "collect":
             data["nums"].append(t)
@@ -230,7 +234,7 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"Enter number {len(data['nums'])+1}")
             else:
                 data["step"] = "name"
-                await update.message.reply_text("Contacts name?")
+                await update.message.reply_text("Contact name?")
 
         elif data["step"] == "name":
             data["name"] = t
@@ -246,7 +250,7 @@ async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_document(open(fname, "rb"))
             user_data[uid] = {}
-            await update.message.reply_text("✅ Done bro")
+            await update.message.reply_text("✅ Done")
 
 # 🔹 RUN
 app = ApplicationBuilder().token(TOKEN).build()
